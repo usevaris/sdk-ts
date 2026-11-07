@@ -82,6 +82,13 @@ export class VarisKeyFetchError extends Error {
 const DEFAULT_MAX_CLOCK_SKEW_SECONDS = 300;
 /** An unknown key ID triggers at most one refetch per this interval. */
 const REFETCH_INTERVAL_MS = 60_000;
+/**
+ * How long the key fetch waits before it gives up. Node's fetch has no
+ * default, so without this a key endpoint that accepts the connection and
+ * then stalls leaves verify unsettled for as long as the platform allows,
+ * and every request waiting on the same load stalls with it.
+ */
+const KEY_FETCH_TIMEOUT_MS = 5_000;
 const SIGNATURE_BYTES = 64;
 const encoder = new TextEncoder();
 
@@ -274,7 +281,11 @@ async function fetchLocalTestKey(requestId: string): Promise<CryptoKey | undefin
 async function fetchKeys(url: string): Promise<VarisPublicKey[]> {
   let response: Response;
   try {
-    response = await fetch(url, { headers: { accept: "application/json" } });
+    response = await fetch(url, {
+      headers: { accept: "application/json" },
+      redirect: "error",
+      signal: AbortSignal.timeout(KEY_FETCH_TIMEOUT_MS),
+    });
   } catch (error) {
     throw new VarisKeyFetchError(
       `Couldn't fetch Varis signing keys from ${url}.`,

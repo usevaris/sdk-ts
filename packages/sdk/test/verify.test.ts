@@ -87,7 +87,7 @@ async function signedRequest(
 
 /** Stubs fetch to serve the given key lists, one per call. The last one repeats. */
 function serveKeys(...responses: VarisPublicKey[][]) {
-  const fetchMock = vi.fn(async (_url: string | URL | Request) => {
+  const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => {
     const keys = responses.length > 1 ? responses.shift()! : responses[0]!;
     return Response.json({ keys });
   });
@@ -133,6 +133,18 @@ describe("Varis.requests.verify", () => {
     await new Varis({ keysUrl }).requests.verify(await signedRequest(key, BODY));
 
     expect(fetchMock.mock.calls[0]![0]).toBe(keysUrl);
+  });
+
+  it("bounds the key fetch and refuses a redirect", async () => {
+    const key = await makeKey("k1");
+    const fetchMock = serveKeys([key.publicKey]);
+
+    await new Varis().requests.verify(await signedRequest(key, BODY));
+
+    const init = fetchMock.mock.calls[0]![1];
+    expect(init?.redirect).toBe("error");
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    expect(init?.signal?.aborted).toBe(false);
   });
 
   it("rejects a tampered body", async () => {
